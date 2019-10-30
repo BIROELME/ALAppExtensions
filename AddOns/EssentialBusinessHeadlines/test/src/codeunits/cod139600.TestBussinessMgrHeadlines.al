@@ -647,6 +647,66 @@ codeunit 139600 "Test Essential Bus. Headlines"
         VerifyOverdueVATReturnPeriodHeadlineIsVisible(OverdueDueDate, OverdueDaysCount);
     end;
 
+
+    [Test]
+    procedure TestRecentlyOverdueInvoiceHeadlineInitialVisibility()
+    begin
+        // [GIVEN] Initial state when no data is present
+        Initialize();
+
+        // [WHEN] We run the computation
+        EssentialBusHeadlineMgt.HandleRecentlyOverdueInvoices();
+
+        // [THEN] The headline is hidden
+        Assert.IsFalse(GetVisibility(EssentialBusinessHeadline."Headline Name"::RecentlyOverdueInvoices), 'Expected recently overdue invoices headline not to be visible');
+    end;
+
+    [Test]
+    procedure TestRecentlyOverdueInvoiceHeadlineWithOneInvoice()
+    begin
+        TestRecentlyOverdueInvoiceWithOverdueInvoices(1);
+    end;
+
+    [Test]
+    procedure TestRecentlyOverdueInvoiceHeadlineWithTwoInvoice()
+    begin
+        TestRecentlyOverdueInvoiceWithOverdueInvoices(2);
+    end;
+
+    [Test]
+    procedure TestRecentlyOverdueInvoiceHeadlineWithFiveInvoice()
+    begin
+        TestRecentlyOverdueInvoiceWithOverdueInvoices(5);
+    end;
+
+    local procedure TestRecentlyOverdueInvoiceWithOverdueInvoices(NumberOfNewlyOverdueInvoices: Integer)
+    var
+        OverdueInvoicesTxt: Text;
+        OverdueInvoicesAmountTxt: Text;
+        TotalAmount: Decimal;
+    begin
+
+        // [GIVEN] Initial step with one invoice that was due yesterday
+        Initialize();
+
+
+        OverdueInvoicesTxt := StrSubstNo('Overdue invoices up by <emphasize>%1</emphasize>.', NumberOfNewlyOverdueInvoices);
+        TotalAmount := CreateInvoicesWithDueDateYesterday(NumberOfNewlyOverdueInvoices);
+        OverdueInvoicesAmountTxt := StrSubstNo('You can collect <emphasize>%1</emphasize>', EssentialBusHeadlineMgt.FormatLocalCurrency(TotalAmount));
+        CreateRandomNumberOfOlderOverdueInvoices();
+
+        // [WHEN] We run the computation
+        EssentialBusHeadlineMgt.HandleRecentlyOverdueInvoices();
+
+        // [THEN] The headline is visible and the message is correct
+        EssentialBusinessHeadline.Get(EssentialBusinessHeadline."Headline Name"::RecentlyOverdueInvoices);
+
+        Assert.IsTrue(EssentialBusinessHeadline."Headline Visible", 'Expected recently overdue invoices headline to be visible');
+        Assert.IsTrue(StrPos(EssentialBusinessHeadline."Headline Text", OverdueInvoicesTxt) > 0, 'Wrong number of sales invoices');
+        Assert.IsTrue(StrPos(EssentialBusinessHeadline."Headline Text", OverdueInvoicesAmountTxt) > 0, 'Wrong total amount');
+    end;
+
+
     procedure Initialize()
     var
         Item: Record Item;
@@ -709,6 +769,53 @@ codeunit 139600 "Test Essential Bus. Headlines"
         end;
     end;
 
+    local procedure CreateInvoicesWithDueDateYesterday(NumberOfInvoices: Integer): Decimal
+    var
+        Yesterday: Date;
+        Count: Integer;
+        TotalAmount: Decimal;
+    begin
+        Yesterday := CalcDate('<-1D>', WorkDate());
+        TotalAmount := 0.0;
+        for Count := 1 to NumberOfInvoices do
+            TotalAmount := TotalAmount + CreateInvoiceWithDueDate(Yesterday);
+
+        exit(TotalAmount);
+    end;
+
+    local procedure CreateInvoiceWithDueDate(DueDate: Date): Decimal
+    var
+        SalesHeaderLocal: Record "Sales Header";
+        Amount: Decimal;
+    begin
+        LibrarySales.CreateSalesInvoice(SalesHeaderLocal);
+        SalesHeaderLocal.Validate("Due Date", DueDate);
+        SalesHeaderLocal.Modify(true);
+
+        SalesHeaderLocal.CalcFields("Amount Including VAT");
+        Amount := SalesHeaderLocal."Amount Including VAT";
+
+        LibrarySales.PostSalesDocument(SalesHeaderLocal, false, true);
+        exit(Amount);
+    end;
+
+    local procedure CreateRandomNumberOfOlderOverdueInvoices()
+    var
+        DueDate: Date;
+        RandomNumber: Integer;
+        Count: Integer;
+    begin
+        // Get random number between 0 and 5, inclusive
+        RandomNumber := Random(6) - 1;
+
+        // Create Random number of overdue invoices with due date before yesterday
+        for Count := 1 to RandomNumber do begin
+            // Get random date, 1 to 10 days before yesterday
+            DueDate := CalcDate(StrSubstNo('<-%1D>', Format(1 + Random(10))), WorkDate());
+            CreateInvoiceWithDueDate(DueDate);
+        end;
+    end;
+
     local procedure AddSalesLineItem(Item: Record Item; Quantity: Integer);
     var
         SalesLine: Record "Sales Line";
@@ -756,18 +863,18 @@ codeunit 139600 "Test Essential Bus. Headlines"
 
     local procedure GetVisibility(HeadlineName: Option): Boolean
     var
-        EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
+        EssentialBusinessHeadlineLocal: Record "Ess. Business Headline Per Usr";
     begin
-        if EssentialBusinessHeadline.Get(HeadlineName, UserSecurityId()) then
-            exit(EssentialBusinessHeadline."Headline Visible");
+        if EssentialBusinessHeadlineLocal.Get(HeadlineName, UserSecurityId()) then
+            exit(EssentialBusinessHeadlineLocal."Headline Visible");
     end;
 
     local procedure GetHeadlineText(HeadlineName: Option): Text[250]
     var
-        EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
+        EssentialBusinessHeadlineLocal: Record "Ess. Business Headline Per Usr";
     begin
-        if EssentialBusinessHeadline.Get(HeadlineName, UserSecurityId()) then
-            exit(EssentialBusinessHeadline."Headline Text");
+        if EssentialBusinessHeadlineLocal.Get(HeadlineName, UserSecurityId()) then
+            exit(EssentialBusinessHeadlineLocal."Headline Text");
     end;
 
     local procedure ComputeVATReturnHeadlines()
@@ -791,7 +898,7 @@ codeunit 139600 "Test Essential Bus. Headlines"
 
     local procedure VerifyOverdueVATReturnPeriodHeadlineIsVisible(DueDate: Date; DaysCount: Integer)
     var
-        HeadlineMgt: Codeunit "Headline Management";
+        HeadlineMgt: Codeunit Headlines;
     begin
         Assert.IsTrue(GetVisibility(EssentialBusinessHeadline."Headline Name"::OverdueVATReturn), 'OverdueVATReturn headline should be visible');
         Assert.AreEqual(
@@ -818,7 +925,7 @@ codeunit 139600 "Test Essential Bus. Headlines"
 
     local procedure VerifyUpcomingVATReturnPeriodHeadlineIsVisible(DueDate: Date; DaysCount: Integer)
     var
-        HeadlineMgt: Codeunit "Headline Management";
+        HeadlineMgt: Codeunit Headlines;
     begin
         Assert.IsTrue(GetVisibility(EssentialBusinessHeadline."Headline Name"::OpenVATReturn), 'OpenVATReturn headline should be visible');
         Assert.AreEqual(
@@ -849,11 +956,4 @@ codeunit 139600 "Test Essential Bus. Headlines"
         VerifyOverdueVATReturnPeriodHeadlineIsNotVisible();
         VerifyUpcomingVATReturnPeriodHeadlineIsNotVisible();
     end;
-
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Headline Management", 'OnBeforeScheduleTask', '', true, true)]
-    local procedure OnBeforeScheduleTask(CodeunitId: Integer)
-    begin
-        Codeunit.Run(CodeunitId);
-    end;
-
 }

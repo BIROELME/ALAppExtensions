@@ -7,7 +7,6 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
 {
 
     var
-        EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
         EssentialBusHeadlineMgt: Codeunit "Essential Bus. Headline Mgt.";
 
     local procedure CanRunSubscribers(): Boolean
@@ -15,8 +14,21 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
         exit(Session.GetExecutionContext() = Session.GetExecutionContext() ::Normal);
     end;
 
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Headline Management", 'OnInvalidateHeadlines', '', true, true)]
-    procedure OnInvalidateHeadlines()
+    [EventSubscriber(ObjectType::Page, Page::"My Settings", 'OnBeforeLanguageChange', '', true, true)]
+    procedure OnBeforeUpdateLanguage(OldLanguageId: Integer; NewLanguageId: Integer);
+    begin
+        InvalidateHeadlines();
+    end;
+
+    [EventSubscriber(ObjectType::Page, Page::"My Settings", 'OnBeforeWorkdateChange', '', true, true)]
+    procedure OnBeforeUpdateWorkdate(OldWorkdate: Date; NewWorkdate: Date);
+    begin
+        InvalidateHeadlines();
+    end;
+
+    local procedure InvalidateHeadlines()
+    var
+        EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
     begin
         if not EssentialBusinessHeadline.WritePermission() then
             exit;
@@ -38,26 +50,48 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
             HeadlineVisible := false;
     end;
 
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Headline RC Business Manager", 'OnComputeHeadlines', '', true, true)]
-    procedure OnComputeHeadlinesBusinessManager()
+    [EventSubscriber(ObjectType::Codeunit, Codeunit::"RC Headlines Executor", 'OnComputeHeadlines', '', true, true)]
+    procedure OnComputeRoleCenterHeadlines(RoleCenterPageID: Integer)
+    var
+        EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
     begin
         if not EssentialBusinessHeadline.WritePermission() then
             exit;
         if not CanRunSubscribers() then
             exit;
 
-        EssentialBusHeadlineMgt.HandleLargestOrderHeadline();
-        EssentialBusHeadlineMgt.HandleLargestSaleHeadline();
-        EssentialBusHeadlineMgt.HandleMostPopularItemHeadline();
-        EssentialBusHeadlineMgt.HandleBusiestResourceHeadline();
-        EssentialBusHeadlineMgt.HandleSalesIncreaseHeadline();
-        EssentialBusHeadlineMgt.HandleTopCustomer();
-        EssentialBusHeadlineMgt.HandleOpenVATReturn();
-        EssentialBusHeadlineMgt.HandleOverdueVATReturn();
+        case RoleCenterPageID of
+            Page::"Headline RC Business Manager":
+                begin
+                    EssentialBusHeadlineMgt.HandleLargestOrderHeadline();
+                    EssentialBusHeadlineMgt.HandleLargestSaleHeadline();
+                    EssentialBusHeadlineMgt.HandleMostPopularItemHeadline();
+                    EssentialBusHeadlineMgt.HandleBusiestResourceHeadline();
+                    EssentialBusHeadlineMgt.HandleSalesIncreaseHeadline();
+                    EssentialBusHeadlineMgt.HandleTopCustomer();
+                    EssentialBusHeadlineMgt.HandleOpenVATReturn();
+                    EssentialBusHeadlineMgt.HandleOverdueVATReturn();
+                    EssentialBusHeadlineMgt.HandleRecentlyOverdueInvoices();
+                end;
+            Page::"Headline RC Order Processor":
+                begin
+                    EssentialBusHeadlineMgt.HandleLargestOrderHeadline();
+                    EssentialBusHeadlineMgt.HandleLargestSaleHeadline();
+                end;
+            Page::"Headline RC Accountant":
+                begin
+                    EssentialBusHeadlineMgt.HandleLargestOrderHeadline();
+                    EssentialBusHeadlineMgt.HandleLargestSaleHeadline();
+                    EssentialBusHeadlineMgt.HandleSalesIncreaseHeadline();
+                end;
+            Page::"Headline RC Relationship Mgt.":
+                EssentialBusHeadlineMgt.HandleTopCustomer();
+        end;
+
     end;
 
-    [EventSubscriber(ObjectType::Page, Page::"Headline RC Business Manager", 'OnIsAnyExtensionHeadlineVisible', '', true, true)]
-    procedure OnIsAnyExtensionHeadlineVisible(var ExtensionHeadlinesVisible: Boolean)
+    [EventSubscriber(ObjectType::Codeunit, Codeunit::"RC Headlines Page Common", 'OnIsAnyExtensionHeadlineVisible', '', true, true)]
+    procedure OnIsAnyExtensionHeadlineVisible(var ExtensionHeadlinesVisible: Boolean; RoleCenterPageID: Integer)
     var
         EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
         AtLeastOneHeadlineVisible: Boolean;
@@ -69,15 +103,32 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
 
         EssentialBusinessHeadline.SetRange("Headline Visible", true);
         EssentialBusinessHeadline.SetRange("User Id", UserSecurityId());
-        EssentialBusinessHeadline.SetFilter("Headline Name", '%1|%2|%3|%4|%5|%6|%7',
-            EssentialBusinessHeadline."Headline Name"::LargestOrder,
-            EssentialBusinessHeadline."Headline Name"::LargestSale,
-            EssentialBusinessHeadline."Headline Name"::BusiestResource,
-            EssentialBusinessHeadline."Headline Name"::MostPopularItem,
-            EssentialBusinessHeadline."Headline Name"::SalesIncrease,
-            EssentialBusinessHeadline."Headline Name"::TopCustomer,
-            EssentialBusinessHeadline."Headline Name"::OpenVATReturn,
-            EssentialBusinessHeadline."Headline Name"::OverdueVATReturn);
+
+        case RoleCenterPageID of
+            Page::"Headline RC Business Manager":
+                EssentialBusinessHeadline.SetFilter("Headline Name", '%1|%2|%3|%4|%5|%6|%7|%8|%9',
+                    EssentialBusinessHeadline."Headline Name"::LargestOrder,
+                    EssentialBusinessHeadline."Headline Name"::LargestSale,
+                    EssentialBusinessHeadline."Headline Name"::BusiestResource,
+                    EssentialBusinessHeadline."Headline Name"::MostPopularItem,
+                    EssentialBusinessHeadline."Headline Name"::SalesIncrease,
+                    EssentialBusinessHeadline."Headline Name"::TopCustomer,
+                    EssentialBusinessHeadline."Headline Name"::OpenVATReturn,
+                    EssentialBusinessHeadline."Headline Name"::OverdueVATReturn,
+                    EssentialBusinessHeadline."Headline Name"::RecentlyOverdueInvoices);
+            Page::"Headline RC Order Processor":
+                EssentialBusinessHeadline.SetFilter("Headline Name", '%1|%2',
+                    EssentialBusinessHeadline."Headline Name"::LargestOrder,
+                    EssentialBusinessHeadline."Headline Name"::LargestSale);
+            Page::"Headline RC Accountant":
+                EssentialBusinessHeadline.SetFilter("Headline Name", '%1|%2|%3',
+                    EssentialBusinessHeadline."Headline Name"::LargestOrder,
+                    EssentialBusinessHeadline."Headline Name"::LargestSale,
+                    EssentialBusinessHeadline."Headline Name"::SalesIncrease);
+            Page::"Headline RC Relationship Mgt.":
+                EssentialBusinessHeadline.SetFilter("Headline Name", '%1',
+                    EssentialBusinessHeadline."Headline Name"::TopCustomer);
+        end;
 
         AtLeastOneHeadlineVisible := not EssentialBusinessHeadline.IsEmpty();
         // only modify the var if this extension is making some headlines visible, setting to false could overrride some other extensions setting the value to true
@@ -87,11 +138,12 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
 
     [EventSubscriber(ObjectType::Page, Page::"Headline RC Business Manager", 'OnSetVisibility', '', true, true)]
     procedure OnSetVisibilityBusinessManager(var MostPopularItemVisible: Boolean; var MostPopularItemText: Text[250];
-                                    var LargestOrderVisible: Boolean; var LargestOrderText: Text[250];
-                                    var LargestSaleVisible: Boolean; var LargestSaleText: Text[250];
-                                    var SalesIncreaseVisible: Boolean; var SalesIncreaseText: Text[250];
-                                    var BusiestResourceVisible: Boolean; var BusiestResourceText: Text[250];
-                                    var TopCustomerVisible: Boolean; var TopCustomerText: Text[250])
+                                             var LargestOrderVisible: Boolean; var LargestOrderText: Text[250];
+                                             var LargestSaleVisible: Boolean; var LargestSaleText: Text[250];
+                                             var SalesIncreaseVisible: Boolean; var SalesIncreaseText: Text[250];
+                                             var BusiestResourceVisible: Boolean; var BusiestResourceText: Text[250];
+                                             var TopCustomerVisible: Boolean; var TopCustomerText: Text[250];
+                                             var RecentlyOverdueInvoicesVisible: Boolean; var RecentlyOverdueInvoicesText: Text[250])
     var
         EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
     begin
@@ -106,6 +158,7 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::SalesIncrease, SalesIncreaseText, SalesIncreaseVisible);
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::BusiestResource, BusiestResourceText, BusiestResourceVisible);
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::TopCustomer, TopCustomerText, TopCustomerVisible);
+        TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::RecentlyOverdueInvoices, RecentlyOverdueInvoicesText, RecentlyOverdueInvoicesVisible);
     end;
 
     [EventSubscriber(ObjectType::Page, Page::"Headline RC Business Manager", 'OnSetVisibilityOpenVATReturn', '', true, true)]
@@ -134,41 +187,6 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::OverdueVATReturn, OverdueVATReturnText, OverdueVATReturnVisible);
     end;
 
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Headline RC Order Processor", 'OnComputeHeadlines', '', true, true)]
-    procedure OnComputeHeadlinesOrderProcessor()
-    begin
-        if not EssentialBusinessHeadline.WritePermission() then
-            exit;
-        if not CanRunSubscribers() then
-            exit;
-
-        EssentialBusHeadlineMgt.HandleLargestOrderHeadline();
-        EssentialBusHeadlineMgt.HandleLargestSaleHeadline();
-    end;
-
-    [EventSubscriber(ObjectType::Page, Page::"Headline RC Order Processor", 'OnIsAnyExtensionHeadlineVisible', '', true, true)]
-    procedure OnIsAnyExtensionHeadlineVisibleOrderProcessor(var ExtensionHeadlinesVisible: Boolean)
-    var
-        EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
-        AtLeastOneHeadlineVisible: Boolean;
-    begin
-        if not CanRunSubscribers() then
-            exit;
-        if not EssentialBusinessHeadline.ReadPermission() then
-            exit;
-
-        EssentialBusinessHeadline.SetRange("Headline Visible", true);
-        EssentialBusinessHeadline.SetRange("User Id", UserSecurityId());
-        EssentialBusinessHeadline.SetFilter("Headline Name", '%1|%2',
-            EssentialBusinessHeadline."Headline Name"::LargestOrder,
-            EssentialBusinessHeadline."Headline Name"::LargestSale);
-
-        AtLeastOneHeadlineVisible := not EssentialBusinessHeadline.IsEmpty();
-        // only modify the var if this extension is making some headlines visible, setting to false could overrride some other extensions setting the value to true
-        if AtLeastOneHeadlineVisible then
-            ExtensionHeadlinesVisible := true;
-    end;
-
     [EventSubscriber(ObjectType::Page, Page::"Headline RC Order Processor", 'OnSetVisibility', '', true, true)]
     procedure OnSetVisibilityOrderProcessor(var LargestOrderVisible: Boolean; var LargestOrderText: Text[250]; var LargestSaleVisible: Boolean; var LargestSaleText: Text[250])
     var
@@ -181,43 +199,6 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
 
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::LargestOrder, LargestOrderText, LargestOrderVisible);
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::LargestSale, LargestSaleText, LargestSaleVisible);
-    end;
-
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Headline RC Accountant", 'OnComputeHeadlines', '', true, true)]
-    procedure OnComputeHeadlinesAccountant()
-    begin
-        if not EssentialBusinessHeadline.WritePermission() then
-            exit;
-        if not CanRunSubscribers() then
-            exit;
-
-        EssentialBusHeadlineMgt.HandleLargestOrderHeadline();
-        EssentialBusHeadlineMgt.HandleLargestSaleHeadline();
-        EssentialBusHeadlineMgt.HandleSalesIncreaseHeadline();
-    end;
-
-    [EventSubscriber(ObjectType::Page, Page::"Headline RC Accountant", 'OnIsAnyExtensionHeadlineVisible', '', true, true)]
-    procedure OnIsAnyExtensionHeadlineVisibleAccountant(var ExtensionHeadlinesVisible: Boolean)
-    var
-        EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
-        AtLeastOneHeadlineVisible: Boolean;
-    begin
-        if not CanRunSubscribers() then
-            exit;
-        if not EssentialBusinessHeadline.ReadPermission() then
-            exit;
-
-        EssentialBusinessHeadline.SetRange("Headline Visible", true);
-        EssentialBusinessHeadline.SetRange("User Id", UserSecurityId());
-        EssentialBusinessHeadline.SetFilter("Headline Name", '%1|%2|%3',
-            EssentialBusinessHeadline."Headline Name"::LargestOrder,
-            EssentialBusinessHeadline."Headline Name"::LargestSale,
-            EssentialBusinessHeadline."Headline Name"::SalesIncrease);
-
-        AtLeastOneHeadlineVisible := not EssentialBusinessHeadline.IsEmpty();
-        // only modify the var if this extension is making some headlines visible, setting to false could overrride some other extensions setting the value to true
-        if AtLeastOneHeadlineVisible then
-            ExtensionHeadlinesVisible := true;
     end;
 
     [EventSubscriber(ObjectType::Page, Page::"Headline RC Accountant", 'OnSetVisibility', '', true, true)]
@@ -235,40 +216,6 @@ codeunit 1438 "Ess. Bus. Headline Subscribers"
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::LargestOrder, LargestOrderText, LargestOrderVisible);
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::LargestSale, LargestSaleText, LargestSaleVisible);
         TransferHeadlineToPage(EssentialBusinessHeadline."Headline Name"::SalesIncrease, SalesIncreaseText, SalesIncreaseVisible);
-    end;
-
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Headline RC Relationship Mgt.", 'OnComputeHeadlines', '', true, true)]
-    procedure OnComputeHeadlinesRelationshipMgt()
-    var
-    begin
-        if not EssentialBusinessHeadline.WritePermission() then
-            exit;
-        if not CanRunSubscribers() then
-            exit;
-
-        EssentialBusHeadlineMgt.HandleTopCustomer();
-    end;
-
-    [EventSubscriber(ObjectType::Page, Page::"Headline RC Relationship Mgt.", 'OnIsAnyExtensionHeadlineVisible', '', true, true)]
-    procedure OnIsAnyExtensionHeadlineVisibleRelationshipMgt(var ExtensionHeadlinesVisible: Boolean)
-    var
-        EssentialBusinessHeadline: Record "Ess. Business Headline Per Usr";
-        AtLeastOneHeadlineVisible: Boolean;
-    begin
-        if not CanRunSubscribers() then
-            exit;
-        if not EssentialBusinessHeadline.ReadPermission() then
-            exit;
-
-        EssentialBusinessHeadline.SetRange("Headline Visible", true);
-        EssentialBusinessHeadline.SetRange("User Id", UserSecurityId());
-        EssentialBusinessHeadline.SetFilter("Headline Name", '%1',
-            EssentialBusinessHeadline."Headline Name"::TopCustomer);
-
-        AtLeastOneHeadlineVisible := not EssentialBusinessHeadline.IsEmpty();
-        // only modify the var if this extension is making some headlines visible, setting to false could overrride some other extensions setting the value to true
-        if AtLeastOneHeadlineVisible then
-            ExtensionHeadlinesVisible := true;
     end;
 
     [EventSubscriber(ObjectType::Page, Page::"Headline RC Relationship Mgt.", 'OnSetVisibility', '', true, true)]

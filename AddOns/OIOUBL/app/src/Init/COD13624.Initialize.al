@@ -15,8 +15,12 @@ codeunit 13624 "OIOUBL-Initialize"
         OIOUBLProfileIDTxt: Label 'Procurement-OrdSimR-BilSim-1.0', Locked = true;
 
     trigger OnInstallAppPerCompany()
+    var
+        AppInfo: ModuleInfo;
     begin
-        CODEUNIT.Run(CODEUNIT::"OIOUBL-MigrateToExtV2");
+        NavApp.GetCurrentModuleInfo(AppInfo);
+        if AppInfo.DataVersion() = Version.Create('0.0.0.0') then
+            CODEUNIT.Run(CODEUNIT::"OIOUBL-MigrateToExtV2");
 
         CompanyInitialize();
     end;
@@ -63,6 +67,7 @@ codeunit 13624 "OIOUBL-Initialize"
         Customer: Record Customer;
         ItemCharge: Record "Item Charge";
         Company: Record Company;
+        RecordExportBuffer: Record "Record Export Buffer";
         DataClassificationMgt: Codeunit "Data Classification Mgt.";
     begin
         Company.Get(CompanyName());
@@ -188,6 +193,8 @@ codeunit 13624 "OIOUBL-Initialize"
         DataClassificationMgt.SetFieldToNormal(Database::"Item Charge", ItemCharge.FieldNo("OIOUBL-Charge Category"));
 
         DataClassificationMgt.SetTableFieldsToNormal(Database::"OIOUBL-Profile");
+
+        DataClassificationMgt.SetFieldToPersonal(Database::"Record Export Buffer", RecordExportBuffer.FieldNo("OIOUBL-User ID"));
     end;
 
     local procedure CreateElectronicProfiles();

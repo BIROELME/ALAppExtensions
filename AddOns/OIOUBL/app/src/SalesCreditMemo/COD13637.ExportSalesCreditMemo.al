@@ -38,6 +38,7 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
     procedure ExportXML(SalesCrMemoHeader: Record "Sales Cr.Memo Header");
     var
         SalesCrMemoHeader2: Record "Sales Cr.Memo Header";
+        RecordExportBuffer: Record "Record Export Buffer";
         RBMgt: Codeunit "File Management";
         OIOUBLManagement: Codeunit "OIOUBL-Management";
         EnvironmentInfo: Codeunit "Environment Information";
@@ -46,16 +47,21 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
     begin
         FromFile := CreateXML(SalesCrMemoHeader);
 
-        SalesSetup.GET();
+        SalesSetup.Get();
 
         if RBMgt.IsLocalFileSystemAccessible() and not EnvironmentInfo.IsSaaS() then
             SalesSetup.VerifyAndSetOIOUBLSetupPath(DocumentType::"Credit Memo");
 
+        OIOUBLManagement.UpdateRecordExportBuffer(
+            SalesCrMemoHeader.RecordId(),
+            CopyStr(FromFile, 1, MaxStrLen(RecordExportBuffer.ServerFilePath)),
+            StrSubstNo('%1.xml', SalesCrMemoHeader."No."));
+
         OIOUBLManagement.ExportXMLFile(SalesCrMemoHeader."No.", FromFile, SalesSetup."OIOUBL-Cr. Memo Path");
 
-        SalesCrMemoHeader2.GET(SalesCrMemoHeader."No.");
-        SalesCrMemoHeader2."OIOUBL-Electronic Credit Memo Created" := TRUE;
-        SalesCrMemoHeader2.MODIFY();
+        SalesCrMemoHeader2.Get(SalesCrMemoHeader."No.");
+        SalesCrMemoHeader2."OIOUBL-Electronic Credit Memo Created" := true;
+        SalesCrMemoHeader2.Modify();
     end;
 
     local procedure InsertDiscrepancyResponse(var CrMemoElement: XmlElement);
@@ -70,7 +76,7 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
         CrMemoElement.Add(DiscrepancyResponseElement);
     end;
 
-    local procedure InsertCrMemoTaxTotal(var CrMemoElement: XmlElement; SalesCrMemoHeader: Record "Sales Cr.Memo Header"; var SalesCrMemoLine: Record "Sales Cr.Memo Line"; TotalTaxAmount: Decimal);
+    local procedure InsertCrMemoTaxTotal(var CrMemoElement: XmlElement; SalesCrMemoHeader: Record "Sales Cr.Memo Header"; var SalesCrMemoLine: Record "Sales Cr.Memo Line"; TotalTaxAmount: Decimal; CurrencyCode: Code[10]);
     var
         TaxTotalElement: XmlElement;
         TaxableAmount: Decimal;
@@ -81,7 +87,7 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
 
         TaxTotalElement.Add(
           XmlElement.Create('TaxAmount', DocNameSpace,
-            XmlAttribute.Create('currencyID', SalesCrMemoHeader."Currency Code"),
+            XmlAttribute.Create('currencyID', CurrencyCode),
             OIOUBLDocumentEncode.DecimalToText(TotalTaxAmount)));
 
         // CrMemo->TaxTotal (for ("Normal VAT" AND "VAT %" <> 0) OR "Full VAT")
@@ -98,7 +104,7 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
                 repeat
                     UpdateTaxAmtAndTaxableAmt(SalesCrMemoLine.Amount, SalesCrMemoLine."Amount Including VAT", TaxableAmount, TaxAmount);
                 until SalesCrMemoLine.NEXT() = 0;
-                OIOUBLXMLGenerator.InsertTaxSubtotal(TaxTotalElement, SalesCrMemoLine."VAT Calculation Type", TaxableAmount, TaxAmount, VATPercentage, SalesCrMemoHeader."Currency Code");
+                OIOUBLXMLGenerator.InsertTaxSubtotal(TaxTotalElement, SalesCrMemoLine."VAT Calculation Type", TaxableAmount, TaxAmount, VATPercentage, CurrencyCode);
             end;
 
             TaxableAmount := 0;
@@ -110,7 +116,7 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
                     UpdateTaxAmtAndTaxableAmt(SalesCrMemoLine.Amount, SalesCrMemoLine."Amount Including VAT", TaxableAmount, TaxAmount);
                 until SalesCrMemoLine.NEXT() = 0;
                 // CrMemo->TaxTotal->TaxSubtotal
-                OIOUBLXMLGenerator.InsertTaxSubtotal(TaxTotalElement, SalesCrMemoLine."VAT Calculation Type", TaxableAmount, TaxAmount, VATPercentage, SalesCrMemoHeader."Currency Code");
+                OIOUBLXMLGenerator.InsertTaxSubtotal(TaxTotalElement, SalesCrMemoLine."VAT Calculation Type", TaxableAmount, TaxAmount, VATPercentage, CurrencyCode);
             end;
         end;
 
@@ -124,7 +130,7 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
             repeat
                 UpdateTaxAmtAndTaxableAmt(SalesCrMemoLine.Amount, SalesCrMemoLine."Amount Including VAT", TaxableAmount, TaxAmount);
             until SalesCrMemoLine.NEXT() = 0;
-            OIOUBLXMLGenerator.InsertTaxSubtotal(TaxTotalElement, SalesCrMemoLine."VAT Calculation Type", TaxableAmount, TaxAmount, VATPercentage, SalesCrMemoHeader."Currency Code");
+            OIOUBLXMLGenerator.InsertTaxSubtotal(TaxTotalElement, SalesCrMemoLine."VAT Calculation Type", TaxableAmount, TaxAmount, VATPercentage, CurrencyCode);
         end;
 
         CrMemoElement.Add(TaxTotalElement);
@@ -143,7 +149,7 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
             OIOUBLDocumentEncode.DecimalToText(SalesCrMemoLine.Quantity)));
         CrMemoLineElement.Add(
           XmlElement.Create('LineExtensionAmount', DocNameSpace,
-            XmlAttribute.Create('currencyID', SalesCrMemoHeader."Currency Code"),
+            XmlAttribute.Create('currencyID', CurrencyCode),
             OIOUBLDocumentEncode.DecimalToText(SalesCrMemoLine.Amount + SalesCrMemoLine."Inv. Discount Amount" +
               SalesCrMemoLine."Line Discount Amount")));
 
@@ -284,7 +290,7 @@ codeunit 13637 "OIOUBL-Export Sales Cr. Memo"
             SalesCrMemoLine2.CALCSUMS(Amount, "Amount Including VAT");
             TotalTaxAmount := SalesCrMemoLine2."Amount Including VAT" - SalesCrMemoLine2.Amount;
 
-            InsertCrMemoTaxTotal(XMLCurrNode, SalesCrMemoHeader, SalesCrMemoLine2, TotalTaxAmount);
+            InsertCrMemoTaxTotal(XMLCurrNode, SalesCrMemoHeader, SalesCrMemoLine2, TotalTaxAmount, CurrencyCode);
         end;
 
         // CreditMemo->LegalMonetaryTotal
